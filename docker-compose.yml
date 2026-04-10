@@ -23,6 +23,8 @@ services:
     volumes:
       # 생성된 규격서를 로컬에서도 확인 가능하도록 마운트
       - ./spec_auto_agent/output:/app/spec_auto_agent/output
+      # ChromaDB 벡터 데이터 영구 보존 (컨테이너 재시작해도 유지)
+      - ./spec_auto_agent/vector_db:/app/spec_auto_agent/vector_db
     restart: unless-stopped
     networks:
       - spec-auto-net

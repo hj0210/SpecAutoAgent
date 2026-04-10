@@ -27,3 +27,7 @@ python-multipart==0.0.12
 
 # HTTP 클라이언트 (openai 내부 의존)
 httpx==0.27.2
+
+# ─── RAG (Phase 2) ───────────────────────────
+# ChromaDB - 로컬 벡터 데이터베이스
+chromadb==0.5.23

@@ -14,6 +14,13 @@ URL 구조:
   /api/spec-auto/analyze             → 스펙 분석만 (파일 생성 X)
   /api/spec-auto/download/{filename} → 생성 파일 다운로드
   /api/spec-auto/parse-reference     → 기존 규격서 파일 → 텍스트 추출
+
+  [RAG]
+  /api/rag/index-doc                 → 규격서 docx 업로드 → ChromaDB 인덱싱
+  /api/rag/search                    → 유사 규격서 청크 검색
+  /api/rag/stats                     → 인덱싱 현황 조회
+  /api/rag/documents                 → 인덱싱된 문서 목록
+  /api/rag/documents/{doc_name}      → 특정 문서 삭제
 ─────────────────────────────────────────────────────────
 """
 
@@ -44,6 +51,8 @@ from spec_auto_agent.core.spec_auto_analyzer import SpecAutoAnalyzer
 from spec_auto_agent.core.spec_auto_doc_gen  import SpecAutoDocGen
 from spec_auto_agent.core.spec_auto_code_gen import SpecAutoCodeGen
 from spec_auto_agent.core.spec_auto_postman  import SpecAutoPostman
+from spec_auto_agent.core.rag_indexer        import index_document, list_indexed_documents, delete_document
+from spec_auto_agent.core.rag_searcher       import search_similar_specs, get_rag_stats
 
 load_dotenv()
 
@@ -206,6 +215,86 @@ def spec_auto_download(filename: str):
         filename=filename,
         media_type="application/octet-stream",
     )
+
+
+# ─────────────────────────────────────────────
+# RAG 라우터
+# ─────────────────────────────────────────────
+
+@app.post("/api/rag/index-doc", tags=["RAG"])
+async def rag_index_document(
+    file:     UploadFile = File(...),
+    doc_name: str        = "",
+):
+    """
+    ## 규격서 docx 업로드 → ChromaDB 인덱싱
+
+    연동규격서 Word(.docx) 파일을 업로드하면 API 섹션별로 청킹 후
+    임베딩을 생성하여 ChromaDB에 저장합니다.
+
+    - **file**: .docx 규격서 파일
+    - **doc_name**: 문서 식별명 (생략 시 파일명 사용)
+    """
+    if not (file.filename or "").endswith(".docx"):
+        raise HTTPException(status_code=400, detail=".docx 파일만 지원합니다.")
+
+    content = await file.read()
+    name    = doc_name or Path(file.filename).stem
+
+    # 임시 파일에 저장 후 인덱싱
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        result = index_document(tmp_path, doc_name=name)
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        import os as _os
+        _os.unlink(tmp_path)
+
+    return result
+
+
+@app.get("/api/rag/stats", tags=["RAG"])
+def rag_stats():
+    """ChromaDB 인덱싱 현황 (총 청크 수, 문서별 청크 수)"""
+    return get_rag_stats()
+
+
+@app.get("/api/rag/documents", tags=["RAG"])
+def rag_list_documents():
+    """인덱싱된 문서 목록 조회"""
+    docs = list_indexed_documents()
+    return {"documents": docs, "count": len(docs)}
+
+
+@app.delete("/api/rag/documents/{doc_name}", tags=["RAG"])
+def rag_delete_document(doc_name: str):
+    """특정 문서의 ChromaDB 인덱스 삭제"""
+    return delete_document(doc_name)
+
+
+@app.post("/api/rag/search", tags=["RAG"])
+async def rag_search(query: str, top_k: int = 3, doc_name_filter: str = ""):
+    """
+    ## 유사 규격서 청크 검색
+
+    - **query**: 검색할 자연어 (예: "캠페인 배너 조회 API")
+    - **top_k**: 반환할 최대 결과 수 (기본 3)
+    - **doc_name_filter**: 특정 문서만 검색 (빈 값이면 전체)
+    """
+    try:
+        results = search_similar_specs(
+            query=query,
+            top_k=top_k,
+            doc_name_filter=doc_name_filter or None,
+        )
+        return {"query": query, "results": results, "count": len(results)}
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/spec-auto/parse-reference", tags=["SpecAutoAgent"])

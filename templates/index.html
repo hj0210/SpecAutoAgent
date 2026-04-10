@@ -167,6 +167,7 @@
       <div class="tab active" onclick="switchTab('structured')">📋 구조화 입력</div>
       <div class="tab" onclick="switchTab('freeform')">✏️ 자유 입력</div>
       <div class="tab" onclick="switchTab('java')">☕ 코드 분석</div>
+      <div class="tab" onclick="switchTab('rag')">🧠 규격서 DB</div>
       <div class="tab" onclick="switchTab('examples')">⚡ 예시</div>
     </div>
 
@@ -305,7 +306,37 @@
 
     </div>
 
-    <!-- ── 탭 4: 예시 ── -->
+    <!-- ── 탭 4: RAG 규격서 DB ── -->
+    <div class="tab-content" id="tab-rag">
+      <div class="field-group">
+        <div class="field-label">📥 규격서 업로드 (ChromaDB 인덱싱)</div>
+        <div class="upload-zone" id="ragUploadZone" onclick="document.getElementById('ragFileInput').click()">
+          <div class="upload-icon">🧠</div>
+          <div class="upload-text"><strong>.docx 연동규격서</strong>를 드래그하거나 클릭하여 업로드</div>
+          <div class="upload-status" id="ragUploadStatus"></div>
+        </div>
+        <input type="file" id="ragFileInput" accept=".docx" style="display:none" onchange="uploadRagDoc(this)"/>
+        <input type="text" id="ragDocName" placeholder="문서 식별명 (생략 시 파일명 사용)" style="margin-top:8px"/>
+        <button class="run-btn" style="margin-top:8px;padding:10px" onclick="uploadRagDoc()">📥 인덱싱 시작</button>
+      </div>
+
+      <div class="field-group" style="margin-top:8px">
+        <div class="field-label">🔍 규격서 검색 테스트</div>
+        <input type="text" id="ragSearchQuery" placeholder="예) 캠페인 배너 조회 API"/>
+        <button class="run-btn" style="margin-top:8px;padding:10px" onclick="searchRag()">🔍 유사 규격 검색</button>
+      </div>
+
+      <div class="field-group" style="margin-top:8px">
+        <div class="field-label">📂 인덱싱된 문서 목록 <button onclick="loadRagStats()" style="margin-left:auto;background:#1a2240;border:1px solid #2a3560;color:#6c8fff;padding:2px 10px;border-radius:12px;cursor:pointer;font-size:.72rem">새로고침</button></div>
+        <div id="ragDocList" style="background:#141620;border:1px solid #252840;border-radius:8px;padding:12px;font-size:.8rem;color:#999;min-height:60px">
+          목록 로딩 중...
+        </div>
+      </div>
+
+      <div id="ragResultBox" style="display:none;background:#141620;border:1px solid #252840;border-radius:8px;padding:14px;font-size:.8rem;white-space:pre-wrap;color:#ccc;max-height:300px;overflow-y:auto;margin-top:4px"></div>
+    </div>
+
+    <!-- ── 탭 5: 예시 ── -->
     <div class="tab-content" id="tab-examples">
       <div class="section-label">클릭하면 구조화 입력에 자동 채워집니다</div>
       <div class="example-grid">
@@ -353,15 +384,117 @@
 // ── 탭 전환 ──────────────────────────────────
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach((t,i) => {
-    const names = ['structured','freeform','java','examples'];
+    const names = ['structured','freeform','java','rag','examples'];
     t.classList.toggle('active', names[i] === name);
   });
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
 
-  // Java 탭일 때 버튼 텍스트 변경
+  // 버튼 텍스트 / 표시 여부
+  const runBtn = document.getElementById('runBtn');
   const btnText = document.getElementById('btnText');
-  btnText.textContent = (name === 'java') ? '☕ 코드 분석 & 규격서 생성' : '🚀 규격서 & 코드 생성';
+  if (name === 'rag') {
+    runBtn.style.display = 'none';
+    loadRagStats();
+  } else {
+    runBtn.style.display = '';
+    btnText.textContent = (name === 'java') ? '☕ 코드 분석 & 규격서 생성' : '🚀 규격서 & 코드 생성';
+  }
+}
+
+// ── RAG 기능 ──────────────────────────────────
+async function uploadRagDoc(input) {
+  const fileInput = document.getElementById('ragFileInput');
+  const file = input ? input.files[0] : fileInput.files[0];
+  if (!file) { alert('.docx 파일을 선택해주세요.'); return; }
+
+  const docName = document.getElementById('ragDocName').value.trim();
+  const status  = document.getElementById('ragUploadStatus');
+  const zone    = document.getElementById('ragUploadZone');
+
+  status.textContent = '⏳ 인덱싱 중... (임베딩 생성 중, 잠시 기다려주세요)';
+  zone.classList.add('has-file');
+
+  const formData = new FormData();
+  formData.append('file', file);
+  if (docName) formData.append('doc_name', docName);
+
+  try {
+    const res  = await fetch('/api/rag/index-doc', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || '인덱싱 실패');
+    status.textContent = `✅ ${data.doc_name} — ${data.chunks_count}개 청크 저장 완료`;
+    loadRagStats();
+  } catch(e) {
+    status.textContent = `❌ 오류: ${e.message}`;
+    status.style.color = '#ff6b6b';
+  }
+}
+
+async function searchRag() {
+  const query = document.getElementById('ragSearchQuery').value.trim();
+  if (!query) { alert('검색어를 입력해주세요.'); return; }
+
+  const resultBox = document.getElementById('ragResultBox');
+  resultBox.style.display = 'block';
+  resultBox.textContent = '🔍 검색 중...';
+
+  try {
+    const res  = await fetch(`/api/rag/search?query=${encodeURIComponent(query)}&top_k=3`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || '검색 실패');
+
+    if (data.results.length === 0) {
+      resultBox.textContent = '검색 결과 없음. 규격서를 먼저 업로드하세요.';
+      return;
+    }
+
+    let text = `[쿼리] "${query}" — ${data.count}개 결과\n\n`;
+    data.results.forEach((r, i) => {
+      const m = r.metadata;
+      text += `▶ ${i+1}. [${m.doc_name}] ${m.section} (유사도: ${(r.similarity*100).toFixed(0)}%)\n`;
+      text += r.text.slice(0, 300) + (r.text.length > 300 ? '...' : '') + '\n\n';
+    });
+    resultBox.textContent = text;
+  } catch(e) {
+    resultBox.textContent = `❌ 오류: ${e.message}`;
+  }
+}
+
+async function loadRagStats() {
+  const listEl = document.getElementById('ragDocList');
+  try {
+    const res  = await fetch('/api/rag/stats');
+    const data = await res.json();
+    if (data.total_chunks === 0) {
+      listEl.innerHTML = '<span style="color:#555">아직 인덱싱된 규격서가 없습니다.</span>';
+      return;
+    }
+    let html = `<div style="color:#6c8fff;margin-bottom:8px">총 ${data.total_chunks}개 청크</div>`;
+    data.documents.forEach(d => {
+      html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1e2130">
+        <span>📄 ${d.doc_name}</span>
+        <span style="color:#555">${d.chunks}청크
+          <button onclick="deleteRagDoc('${d.doc_name}')" style="margin-left:8px;background:#2a1020;border:1px solid #502030;color:#ff6b6b;padding:1px 6px;border-radius:4px;cursor:pointer;font-size:.7rem">삭제</button>
+        </span>
+      </div>`;
+    });
+    listEl.innerHTML = html;
+  } catch(e) {
+    listEl.innerHTML = `<span style="color:#ff6b6b">오류: ${e.message}</span>`;
+  }
+}
+
+async function deleteRagDoc(docName) {
+  if (!confirm(`'${docName}' 문서를 삭제할까요?`)) return;
+  try {
+    const res  = await fetch(`/api/rag/documents/${encodeURIComponent(docName)}`, { method: 'DELETE' });
+    const data = await res.json();
+    alert(`삭제 완료: ${data.deleted_chunks}개 청크 제거`);
+    loadRagStats();
+  } catch(e) {
+    alert(`삭제 실패: ${e.message}`);
+  }
 }
 
 // ── 예시 자동 채움 ──────────────────────────────

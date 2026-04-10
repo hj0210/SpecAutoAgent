@@ -13,6 +13,9 @@ venv/
 spec_auto_agent/output/*
 !spec_auto_agent/output/.gitkeep
 
+# ChromaDB 벡터DB (로컬 데이터, git 제외)
+spec_auto_agent/vector_db/
+
 # IDE
 .idea/
 .vscode/
