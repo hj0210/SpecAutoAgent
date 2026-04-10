@@ -150,4 +150,5 @@ class SpecAutoHealthResponse(BaseModel):
     """헬스체크 응답"""
     status:  str = "ok"
     service: str = "SpecAutoAgent"
-    version: str = "1.0.0"
+    version: str = "1.2.0"
+    build:   str = "2026-04-10"

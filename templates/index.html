@@ -380,6 +380,14 @@
 
 </main>
 
+<!-- 우측 하단 버전 뱃지 -->
+<div id="versionBadge" style="
+  position:fixed; bottom:12px; right:14px;
+  font-size:0.65rem; color:#2a3050;
+  cursor:default; user-select:none;
+  transition: color .2s;
+" title="SpecAutoAgent 버전 정보">v--.--</div>
+
 <script>
 // ── 탭 전환 ──────────────────────────────────
 function switchTab(name) {
@@ -741,6 +749,22 @@ function renderResult(data) {
     </div>
   `;
 }
+
+// ── 버전 뱃지 (서버에서 자동 로딩) ──────────────
+async function loadVersion() {
+  try {
+    const res  = await fetch('/health');
+    const data = await res.json();
+    const badge = document.getElementById('versionBadge');
+    badge.textContent = `v${data.version} · ${data.build}`;
+    // 호버 시 살짝 밝게
+    badge.addEventListener('mouseenter', () => badge.style.color = '#3a4570');
+    badge.addEventListener('mouseleave', () => badge.style.color = '#2a3050');
+  } catch(e) {
+    // 실패해도 조용히 무시
+  }
+}
+loadVersion();
 </script>
 
 </body>
