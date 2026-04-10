@@ -17,6 +17,13 @@ from spec_auto_agent.models.spec_auto_models import (
     SpecApiSchema, SpecFieldSchema, SpecErrorSchema, HttpMethod
 )
 
+# RAG는 선택적 의존 — ChromaDB 없어도 동작
+try:
+    from spec_auto_agent.core.rag_searcher import build_rag_context
+    RAG_AVAILABLE = True
+except Exception:
+    RAG_AVAILABLE = False
+
 # ─────────────────────────────────────────────
 # 시스템 프롬프트
 # ─────────────────────────────────────────────
@@ -87,9 +94,10 @@ class SpecAutoAnalyzer:
         self.client, self.deployment = get_client()
 
     def analyze(self, user_input: str) -> SpecApiSchema:
-        """자연어 단일 텍스트 → SpecApiSchema"""
+        """자연어 단일 텍스트 → SpecApiSchema (RAG 컨텍스트 자동 주입)"""
         print(f"[SpecAutoAnalyzer] 분석 시작: '{user_input[:50]}...'")
-        return self._call_gpt(user_input)
+        prompt = self._inject_rag(user_input)
+        return self._call_gpt(prompt)
 
     def analyze_structured(
         self,
@@ -118,16 +126,54 @@ class SpecAutoAnalyzer:
 
         prompt = "\n\n".join(prompt_parts)
         print(f"[SpecAutoAnalyzer] 구조화 분석 시작: 목적={purpose[:30]}")
+        # reference가 없을 때만 RAG로 자동 보완
+        if not reference.strip():
+            prompt = self._inject_rag(purpose + " " + features)
         return self._call_gpt(prompt)
 
     def analyze_from_java(self, java_code: str, reference_doc: str = "") -> SpecApiSchema:
         """
         Scenario A: Java Spring Controller 소스코드 → SpecApiSchema
         Regex 1차 파싱 + GPT-4o 심층 분석 하이브리드
+        reference_doc이 없으면 RAG로 자동 보완
         """
         print(f"[SpecAutoAnalyzer] Java 코드 분석 시작 ({len(java_code)} bytes)")
+        # Java 코드에서 컨트롤러 이름/매핑 힌트 추출하여 RAG 검색 쿼리로 활용
+        if not reference_doc.strip():
+            import re
+            mapping_match = re.search(r'@RequestMapping\(["\']([^"\']+)', java_code)
+            class_match   = re.search(r'class\s+(\w+Controller)', java_code)
+            rag_query = " ".join(filter(None, [
+                mapping_match.group(1) if mapping_match else "",
+                class_match.group(1)   if class_match   else "",
+                "API 연동규격서",
+            ]))
+            reference_doc = self._get_rag_reference(rag_query)
         parser = SpecAutoJavaParser()
         return parser.parse_and_generate(java_code, reference_doc)
+
+    def _inject_rag(self, query: str) -> str:
+        """RAG 컨텍스트를 쿼리에 주입 (ChromaDB 비어있으면 그냥 쿼리 반환)"""
+        if not RAG_AVAILABLE:
+            return query
+        try:
+            rag_ctx = build_rag_context(query, top_k=3)
+            if rag_ctx:
+                print(f"[SpecAutoAnalyzer] RAG 컨텍스트 주입 완료 ({len(rag_ctx)}자)")
+                return f"{rag_ctx}\n\n[사용자 요청]\n{query}"
+        except Exception as e:
+            print(f"[SpecAutoAnalyzer] RAG 스킵 (ChromaDB 비어있거나 오류): {e}")
+        return query
+
+    def _get_rag_reference(self, query: str) -> str:
+        """RAG 검색 결과를 reference_doc 형식으로 반환"""
+        if not RAG_AVAILABLE:
+            return ""
+        try:
+            rag_ctx = build_rag_context(query, top_k=2)
+            return rag_ctx or ""
+        except Exception:
+            return ""
 
     def _call_gpt(self, user_prompt: str) -> SpecApiSchema:
         # Gemini는 response_format 미지원 → 프롬프트로 JSON 강제
