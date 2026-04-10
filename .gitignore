@@ -1,0 +1,19 @@
+# 환경변수 (API 키 포함 - 절대 커밋 금지)
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.Python
+
+# 생성 산출물 (output 폴더는 git 제외)
+spec_auto_agent/output/*
+!spec_auto_agent/output/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+*.iml

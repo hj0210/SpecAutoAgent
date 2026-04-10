@@ -1,0 +1,26 @@
+# ─────────────────────────────────────────────
+# SpecAutoAgent - 배포용 Docker Compose
+# 빌드 없이 Docker Hub 이미지를 바로 pull해서 실행
+#
+# 사전 준비: .env 파일 생성 후 OPENAI_API_KEY 입력
+# 실행: docker-compose -f docker-compose.prod.yml up -d
+# 종료: docker-compose -f docker-compose.prod.yml down
+# ─────────────────────────────────────────────
+
+services:
+
+  spec-auto-agent:
+    image: chj0210/spec-auto-agent:latest   # Docker Hub에서 자동 pull
+    container_name: spec-auto-agent
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./output:/app/spec_auto_agent/output
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

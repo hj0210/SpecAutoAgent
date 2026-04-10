@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# 가상환경
+.venv/
+venv/
+env/
+
+# 환경변수 (보안)
+.env
+
+# 생성 산출물 (볼륨 마운트로 관리)
+spec_auto_agent/output/*
+!spec_auto_agent/output/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# 문서
+README.md
