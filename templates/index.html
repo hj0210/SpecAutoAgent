@@ -340,10 +340,7 @@
           <span style="margin-left:10px;font-size:.8rem;color:#666">검색 중...</span>
         </div>
 
-        <!-- 검색 결과 박스 -->
-        <div id="ragResultBox" style="display:none;background:#0d1020;border:1px solid #2a3560;
-             border-radius:8px;padding:14px;font-size:.78rem;color:#ccc;
-             max-height:280px;overflow-y:auto;margin-top:8px;line-height:1.6"></div>
+        <!-- 결과는 오른쪽 패널에 표시됨 -->
       </div>
 
       <div class="field-group" style="margin-top:8px">
@@ -465,58 +462,89 @@ async function uploadRagDoc(input) {
 async function searchRag() {
   const query   = document.getElementById('ragSearchQuery').value.trim();
   const spinner = document.getElementById('ragSpinner');
-  const resultBox = document.getElementById('ragResultBox');
+  const panel   = document.getElementById('resultPanel');
   const btn     = document.getElementById('ragSearchBtn');
 
   if (!query) { alert('검색어를 입력해주세요.'); return; }
 
   // 로딩 시작
   spinner.style.display = 'block';
-  resultBox.style.display = 'none';
   btn.disabled = true;
   btn.textContent = '검색 중...';
+  panel.innerHTML = `
+    <div style="margin:auto;text-align:center;color:#444;padding:40px">
+      <div style="display:inline-block;width:32px;height:32px;border:3px solid #252840;
+           border-top-color:#6c8fff;border-radius:50%;animation:spin .7s linear infinite;margin-bottom:16px"></div>
+      <p style="font-size:.85rem">유사 규격서 검색 중...</p>
+    </div>`;
 
   try {
-    // ✅ POST로 수정 (query string으로 전달)
     const res  = await fetch(
-      `/api/rag/search?query=${encodeURIComponent(query)}&top_k=3`,
+      `/api/rag/search?query=${encodeURIComponent(query)}&top_k=5`,
       { method: 'POST' }
     );
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || `서버 오류 (${res.status})`);
 
-    resultBox.style.display = 'block';
-
     if (!data.results || data.results.length === 0) {
-      resultBox.innerHTML = '<span style="color:#666">검색 결과 없음. 규격서를 먼저 업로드하세요.</span>';
+      panel.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">🔍</div>
+          <p>검색 결과가 없습니다.<br/>규격서를 먼저 업로드하세요.</p>
+        </div>`;
       return;
     }
 
-    // 결과 렌더링
-    let html = `<div style="color:#6c8fff;margin-bottom:10px">🔍 "${query}" — ${data.count}개 결과</div>`;
+    // 오른쪽 패널에 결과 렌더링
+    let html = `
+      <div style="padding:24px;height:100%;overflow-y:auto;box-sizing:border-box">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;
+             border-bottom:1px solid #1e2130;padding-bottom:14px">
+          <span style="font-size:1.1rem">🧠</span>
+          <div>
+            <div style="font-size:.95rem;font-weight:700;color:#fff">유사 규격서 검색 결과</div>
+            <div style="font-size:.75rem;color:#555;margin-top:2px">"${query}" — ${data.count}개 매칭</div>
+          </div>
+        </div>`;
+
     data.results.forEach((r, i) => {
       const m   = r.metadata || {};
       const sim = Math.round((r.similarity || 0) * 100);
-      const barW = sim;
-      const preview = (r.text || '').slice(0, 250).replace(/</g,'&lt;');
+      const preview = (r.text || '').replace(/</g,'&lt;').replace(/\n/g,'<br>');
+      const simColor = sim >= 80 ? '#4caf50' : sim >= 60 ? '#6c8fff' : '#888';
       html += `
-        <div style="border:1px solid #1e2540;border-radius:6px;padding:10px;margin-bottom:8px;background:#111525">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <span style="color:#aaa;font-weight:600">▶ ${i+1}. ${m.section || '(섹션 없음)'}</span>
-            <span style="font-size:.7rem;color:#555">${m.doc_name || ''}</span>
+        <div style="border:1px solid #1e2540;border-radius:8px;margin-bottom:14px;overflow:hidden">
+          <div style="background:#111525;padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <span style="color:#aaa;font-weight:600;font-size:.85rem">${i+1}. ${m.section || '(섹션 없음)'}</span>
+              ${m.api_id ? `<span style="margin-left:8px;font-size:.7rem;color:#3a4570;background:#0d1020;padding:2px 6px;border-radius:4px">IF: ${m.api_id}</span>` : ''}
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="background:#1a2240;border-radius:10px;height:6px;width:80px;overflow:hidden">
+                <div style="background:${simColor};height:100%;width:${sim}%;transition:width .4s"></div>
+              </div>
+              <span style="font-size:.75rem;font-weight:700;color:${simColor}">${sim}%</span>
+            </div>
           </div>
-          <div style="background:#1a2240;border-radius:4px;height:4px;margin-bottom:6px;overflow:hidden">
-            <div style="background:#6c8fff;height:100%;width:${barW}%"></div>
+          <div style="padding:12px 16px;font-size:.75rem;line-height:1.7;color:#888;
+               max-height:180px;overflow-y:auto;background:#0d1020">
+            ${preview}
           </div>
-          <div style="font-size:.68rem;color:#6c8fff;margin-bottom:6px">유사도 ${sim}%${m.api_id ? ' · I/F ID: '+m.api_id : ''}</div>
-          <div style="color:#888;font-size:.75rem;line-height:1.5">${preview}${r.text.length>250?'…':''}</div>
+          <div style="padding:8px 16px;background:#0a0e1a;font-size:.68rem;color:#2a3570">
+            📄 ${m.doc_name || ''}
+          </div>
         </div>`;
     });
-    resultBox.innerHTML = html;
+
+    html += `</div>`;
+    panel.innerHTML = html;
 
   } catch(e) {
-    resultBox.style.display = 'block';
-    resultBox.innerHTML = `<span style="color:#ff6b6b">❌ 오류: ${e.message}</span>`;
+    panel.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">⚠️</div>
+        <p style="color:#ff6b6b">오류: ${e.message}</p>
+      </div>`;
   } finally {
     spinner.style.display = 'none';
     btn.disabled = false;
