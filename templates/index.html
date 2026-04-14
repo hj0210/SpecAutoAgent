@@ -309,42 +309,28 @@
 
     <!-- ── 탭 4: RAG 규격서 DB ── -->
     <div class="tab-content" id="tab-rag">
+
+      <!-- 안내 문구 -->
+      <div style="background:#0d1525;border:1px solid #1e2d50;border-radius:8px;
+           padding:12px 14px;font-size:.78rem;color:#5a7aaa;line-height:1.6;margin-bottom:4px">
+        📌 업로드한 규격서는 <strong style="color:#6c8fff">표준 참조 문서</strong>로 저장됩니다.<br>
+        이후 규격서 생성 시 자동으로 참조하여 동일한 형식·패턴으로 결과물을 만듭니다.
+      </div>
+
       <div class="field-group">
-        <div class="field-label">📥 규격서 업로드 (ChromaDB 인덱싱)</div>
+        <div class="field-label">📥 표준 규격서 등록</div>
         <div class="upload-zone" id="ragUploadZone" onclick="document.getElementById('ragFileInput').click()">
           <div class="upload-icon">🧠</div>
           <div class="upload-text"><strong>.docx 연동규격서</strong>를 드래그하거나 클릭하여 업로드</div>
           <div class="upload-status" id="ragUploadStatus"></div>
         </div>
         <input type="file" id="ragFileInput" accept=".docx" style="display:none" onchange="uploadRagDoc(this)"/>
-        <input type="text" id="ragDocName" placeholder="문서 식별명 (생략 시 파일명 사용)" style="margin-top:8px"/>
-        <button class="run-btn" style="margin-top:8px;padding:10px" onclick="uploadRagDoc()">📥 인덱싱 시작</button>
+        <input type="text" id="ragDocName" placeholder="문서 식별명 (예: onmasi-v1.1, kt-standard-2026)" style="margin-top:8px"/>
+        <button class="run-btn" style="margin-top:8px;padding:10px" onclick="uploadRagDoc()">📥 표준 문서로 등록</button>
       </div>
 
       <div class="field-group" style="margin-top:8px">
-        <div class="field-label">🔍 규격서 검색 테스트</div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <input type="text" id="ragSearchQuery" placeholder="예) 캠페인 배너 조회 API"
-            style="flex:1" onkeydown="if(event.key==='Enter') searchRag()"/>
-          <button onclick="searchRag()" id="ragSearchBtn"
-            style="white-space:nowrap;background:#1a2240;border:1px solid #2a3560;color:#6c8fff;
-                   padding:10px 16px;border-radius:8px;cursor:pointer;font-size:.82rem;flex-shrink:0">
-            🔍 검색
-          </button>
-        </div>
-
-        <!-- 로딩 스피너 -->
-        <div id="ragSpinner" style="display:none;text-align:center;padding:16px">
-          <div style="display:inline-block;width:22px;height:22px;border:3px solid #252840;
-               border-top-color:#6c8fff;border-radius:50%;animation:spin .7s linear infinite"></div>
-          <span style="margin-left:10px;font-size:.8rem;color:#666">검색 중...</span>
-        </div>
-
-        <!-- 결과는 오른쪽 패널에 표시됨 -->
-      </div>
-
-      <div class="field-group" style="margin-top:8px">
-        <div class="field-label">📂 인덱싱된 문서 목록
+        <div class="field-label">📂 등록된 표준 문서 목록
           <button onclick="loadRagStats()" style="margin-left:auto;background:#1a2240;
             border:1px solid #2a3560;color:#6c8fff;padding:2px 10px;
             border-radius:12px;cursor:pointer;font-size:.72rem">새로고침</button>
@@ -424,6 +410,16 @@ function switchTab(name) {
   if (name === 'rag') {
     runBtn.style.display = 'none';
     loadRagStats();
+    document.getElementById('resultPanel').innerHTML = `
+      <div style="margin:auto;text-align:center;color:#2a3560;padding:40px 30px">
+        <div style="font-size:2.5rem;margin-bottom:16px;opacity:.6">🧠</div>
+        <div style="font-size:.9rem;font-weight:600;color:#3a4d80;margin-bottom:10px">표준 규격서 DB</div>
+        <div style="font-size:.8rem;color:#2a3560;line-height:1.8">
+          등록된 규격서는 자동으로 참조됩니다.<br>
+          별도 설정 없이 구조화 입력 / 자유 입력 탭에서<br>
+          규격서를 생성하면 표준 패턴이 반영됩니다.
+        </div>
+      </div>`;
   } else {
     runBtn.style.display = '';
     btnText.textContent = (name === 'java') ? '☕ 코드 분석 & 규격서 생성' : '🚀 규격서 & 코드 생성';
