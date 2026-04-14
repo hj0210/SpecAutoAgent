@@ -17,7 +17,8 @@ services:
     env_file:
       - .env
     volumes:
-      - ./output:/app/spec_auto_agent/output
+      - ./spec_auto_agent/output:/app/spec_auto_agent/output
+      - ./spec_auto_agent/vector_db:/app/spec_auto_agent/vector_db
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]

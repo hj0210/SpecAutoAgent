@@ -54,6 +54,7 @@
     }
     .upload-zone:hover{border-color:#6c8fff;background:#141830;}
     .upload-zone.has-file{border-color:#4caf50;background:#0f1a0f;}
+    @keyframes spin{to{transform:rotate(360deg);}}
     .upload-icon{font-size:1.6rem;margin-bottom:6px;}
     .upload-text{font-size:.8rem;color:#666;}
     .upload-text strong{color:#aaa;}
@@ -322,18 +323,40 @@
 
       <div class="field-group" style="margin-top:8px">
         <div class="field-label">🔍 규격서 검색 테스트</div>
-        <input type="text" id="ragSearchQuery" placeholder="예) 캠페인 배너 조회 API"/>
-        <button class="run-btn" style="margin-top:8px;padding:10px" onclick="searchRag()">🔍 유사 규격 검색</button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="ragSearchQuery" placeholder="예) 캠페인 배너 조회 API"
+            style="flex:1" onkeydown="if(event.key==='Enter') searchRag()"/>
+          <button onclick="searchRag()" id="ragSearchBtn"
+            style="white-space:nowrap;background:#1a2240;border:1px solid #2a3560;color:#6c8fff;
+                   padding:10px 16px;border-radius:8px;cursor:pointer;font-size:.82rem;flex-shrink:0">
+            🔍 검색
+          </button>
+        </div>
+
+        <!-- 로딩 스피너 -->
+        <div id="ragSpinner" style="display:none;text-align:center;padding:16px">
+          <div style="display:inline-block;width:22px;height:22px;border:3px solid #252840;
+               border-top-color:#6c8fff;border-radius:50%;animation:spin .7s linear infinite"></div>
+          <span style="margin-left:10px;font-size:.8rem;color:#666">검색 중...</span>
+        </div>
+
+        <!-- 검색 결과 박스 -->
+        <div id="ragResultBox" style="display:none;background:#0d1020;border:1px solid #2a3560;
+             border-radius:8px;padding:14px;font-size:.78rem;color:#ccc;
+             max-height:280px;overflow-y:auto;margin-top:8px;line-height:1.6"></div>
       </div>
 
       <div class="field-group" style="margin-top:8px">
-        <div class="field-label">📂 인덱싱된 문서 목록 <button onclick="loadRagStats()" style="margin-left:auto;background:#1a2240;border:1px solid #2a3560;color:#6c8fff;padding:2px 10px;border-radius:12px;cursor:pointer;font-size:.72rem">새로고침</button></div>
-        <div id="ragDocList" style="background:#141620;border:1px solid #252840;border-radius:8px;padding:12px;font-size:.8rem;color:#999;min-height:60px">
+        <div class="field-label">📂 인덱싱된 문서 목록
+          <button onclick="loadRagStats()" style="margin-left:auto;background:#1a2240;
+            border:1px solid #2a3560;color:#6c8fff;padding:2px 10px;
+            border-radius:12px;cursor:pointer;font-size:.72rem">새로고침</button>
+        </div>
+        <div id="ragDocList" style="background:#141620;border:1px solid #252840;
+             border-radius:8px;padding:12px;font-size:.8rem;color:#999;min-height:60px">
           목록 로딩 중...
         </div>
       </div>
-
-      <div id="ragResultBox" style="display:none;background:#141620;border:1px solid #252840;border-radius:8px;padding:14px;font-size:.8rem;white-space:pre-wrap;color:#ccc;max-height:300px;overflow-y:auto;margin-top:4px"></div>
     </div>
 
     <!-- ── 탭 5: 예시 ── -->
@@ -440,32 +463,64 @@ async function uploadRagDoc(input) {
 }
 
 async function searchRag() {
-  const query = document.getElementById('ragSearchQuery').value.trim();
+  const query   = document.getElementById('ragSearchQuery').value.trim();
+  const spinner = document.getElementById('ragSpinner');
+  const resultBox = document.getElementById('ragResultBox');
+  const btn     = document.getElementById('ragSearchBtn');
+
   if (!query) { alert('검색어를 입력해주세요.'); return; }
 
-  const resultBox = document.getElementById('ragResultBox');
-  resultBox.style.display = 'block';
-  resultBox.textContent = '🔍 검색 중...';
+  // 로딩 시작
+  spinner.style.display = 'block';
+  resultBox.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = '검색 중...';
 
   try {
-    const res  = await fetch(`/api/rag/search?query=${encodeURIComponent(query)}&top_k=3`);
+    // ✅ POST로 수정 (query string으로 전달)
+    const res  = await fetch(
+      `/api/rag/search?query=${encodeURIComponent(query)}&top_k=3`,
+      { method: 'POST' }
+    );
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || '검색 실패');
+    if (!res.ok) throw new Error(data.detail || `서버 오류 (${res.status})`);
 
-    if (data.results.length === 0) {
-      resultBox.textContent = '검색 결과 없음. 규격서를 먼저 업로드하세요.';
+    resultBox.style.display = 'block';
+
+    if (!data.results || data.results.length === 0) {
+      resultBox.innerHTML = '<span style="color:#666">검색 결과 없음. 규격서를 먼저 업로드하세요.</span>';
       return;
     }
 
-    let text = `[쿼리] "${query}" — ${data.count}개 결과\n\n`;
+    // 결과 렌더링
+    let html = `<div style="color:#6c8fff;margin-bottom:10px">🔍 "${query}" — ${data.count}개 결과</div>`;
     data.results.forEach((r, i) => {
-      const m = r.metadata;
-      text += `▶ ${i+1}. [${m.doc_name}] ${m.section} (유사도: ${(r.similarity*100).toFixed(0)}%)\n`;
-      text += r.text.slice(0, 300) + (r.text.length > 300 ? '...' : '') + '\n\n';
+      const m   = r.metadata || {};
+      const sim = Math.round((r.similarity || 0) * 100);
+      const barW = sim;
+      const preview = (r.text || '').slice(0, 250).replace(/</g,'&lt;');
+      html += `
+        <div style="border:1px solid #1e2540;border-radius:6px;padding:10px;margin-bottom:8px;background:#111525">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="color:#aaa;font-weight:600">▶ ${i+1}. ${m.section || '(섹션 없음)'}</span>
+            <span style="font-size:.7rem;color:#555">${m.doc_name || ''}</span>
+          </div>
+          <div style="background:#1a2240;border-radius:4px;height:4px;margin-bottom:6px;overflow:hidden">
+            <div style="background:#6c8fff;height:100%;width:${barW}%"></div>
+          </div>
+          <div style="font-size:.68rem;color:#6c8fff;margin-bottom:6px">유사도 ${sim}%${m.api_id ? ' · I/F ID: '+m.api_id : ''}</div>
+          <div style="color:#888;font-size:.75rem;line-height:1.5">${preview}${r.text.length>250?'…':''}</div>
+        </div>`;
     });
-    resultBox.textContent = text;
+    resultBox.innerHTML = html;
+
   } catch(e) {
-    resultBox.textContent = `❌ 오류: ${e.message}`;
+    resultBox.style.display = 'block';
+    resultBox.innerHTML = `<span style="color:#ff6b6b">❌ 오류: ${e.message}</span>`;
+  } finally {
+    spinner.style.display = 'none';
+    btn.disabled = false;
+    btn.textContent = '🔍 검색';
   }
 }
 
