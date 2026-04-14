@@ -20,3 +20,6 @@ spec_auto_agent/vector_db/
 .idea/
 .vscode/
 *.iml
+
+# 개인 노트 (git 업로드 금지)
+MY_NOTES.md
