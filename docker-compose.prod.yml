@@ -5,6 +5,8 @@
 # 사전 준비: .env 파일 생성 후 OPENAI_API_KEY 입력
 # 실행: docker-compose -f docker-compose.prod.yml up -d
 # 종료: docker-compose -f docker-compose.prod.yml down
+#
+# ※ Watchtower가 Docker Hub 새 이미지 감지 시 자동 재배포 (5분 간격)
 # ─────────────────────────────────────────────
 
 services:
@@ -25,3 +27,13 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  # ── Watchtower: Docker Hub 새 이미지 감지 → 자동 재시작 ──
+  # git push → GitHub Actions → Docker Hub → Watchtower → 자동 반영
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 300 spec-auto-agent   # 5분마다 spec-auto-agent 이미지 확인
+    restart: unless-stopped
